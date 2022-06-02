@@ -5,12 +5,11 @@ from sys import prefix
 from unicodedata import name
 from flask import Flask
 from flask import render_template_string
-from flask import request
+from flask import request,Response
 from flask import redirect
 import oci
-import os
 import requests
-import json
+
 
 #init OS client
 signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
@@ -76,15 +75,16 @@ def root():
         ul#menu li {
         display:inline;
         }
+        body { font-family: helvetica; }
         </style>
 
         </head>
         <body>
         
         <div align = "center">
-        <h1>Buckets browser</h1>
 
         {% if not root_level %}
+            
             <ul id="menu">
             {% for bct in buckets %}
                 {% if bct == current_bucket %}
@@ -95,6 +95,7 @@ def root():
 
             {% endfor %}
             </ul>
+            <h1>Bucket: {{current_bucket}}</h1>
         {% endif %}
         
         </div>
@@ -113,7 +114,7 @@ def root():
                 {% if '/' in object %}
                 <li ><a href="/?b={{current_bucket}}&p={{path_in_bucket}}{{object}}">{{object}}</a></li>
                 {% else %}
-                <li ><a href="/get?b={{current_bucket}}&o={{path_in_bucket}}{{object}}">{{object}}</a></li>
+                <li ><a href="/get/{{object}}?b={{current_bucket}}&o={{path_in_bucket}}{{object}}">{{object}}</a></li>
                 {% endif %}
             {% endfor %}
             </ul>
@@ -128,12 +129,22 @@ def root():
         objects_list=items_at_path(bucket, path_in_bucket),
         root_level=root_level)
 
-@app.route('/get')
-def get():
+@app.route('/get/<filename>')
+def get(filename):
     object_name = request.args.get('o')
     bucket = request.args.get('b')
     print(object_name)
-    return object_storage_client.get_object(namespace,bucket,object_name).data
+
+    resp = object_storage_client.get_object(namespace,bucket,object_name)
+    excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+    headers = [(name, value) for (name, value) in resp.headers.items()
+               if name.lower() not in excluded_headers]
+
+    #Content-Disposition: attachment; filename=
+    headers = headers +  [('Content-Disposition', 'attachment')]
+
+    response = Response(resp.data, resp.status, headers)
+    return response
 
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)
